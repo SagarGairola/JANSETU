@@ -1,7 +1,9 @@
 # JANSETU
 
 ### From Government Schemes to Application Readiness
+### 🚀 Live Demo
 
+[Open JANSETU](https://jansetu-xi.vercel.app)
 JANSETU is a citizen-focused government-scheme guidance platform that helps users move from describing a real-world need to understanding relevant government support, eligibility conditions, missing requirements, and the next actionable step.
 
 ## The Problem
