@@ -1,49 +1,179 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { DemoProvider } from './context';
-import { Header } from './components/Header';
-import { ProgressIndicator } from './components/ProgressIndicator';
-import { Footer } from './components/Footer';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { SceneState, UserResponses } from './types/experience';
+import { audioManager } from './audio/AudioManager';
 
-import { WelcomePage } from './pages/Welcome';
-import { NeedInputPage } from './pages/NeedInput';
-import { SchemesPage } from './pages/Schemes';
-import { SchemeDetailsPage } from './pages/SchemeDetails';
-import { EligibilityPage } from './pages/Eligibility';
-import { ReadinessPage } from './pages/Readiness';
-import { RequirementsPage } from './pages/Requirements';
-import { NextActionPage } from './pages/NextAction';
-import { OfficialApplicationPage } from './pages/OfficialApplication';
-import { BlockerPage } from './pages/Blocker';
+// Components
+import { MusicControl } from './components/MusicControl';
+import { AudioDebugPanel } from './components/AudioDebugPanel';
 
-import './App.css';
+// Scenes (Restored V6 Storyline)
+import { OpeningScene } from './scenes/OpeningScene';
+import { SGQuestionScene } from './scenes/SGQuestionScene';
+import { SgYesPathScene } from './scenes/SgYesPathScene';
+import { TeamQuestionsScene } from './scenes/TeamQuestionsScene';
+import { MemoryMontageScene } from './scenes/MemoryMontageScene';
+import { EmotionalMomentScene } from './scenes/EmotionalMomentScene';
+import { ComedyCutScene } from './scenes/ComedyCutScene';
+import { EndingScene } from './scenes/EndingScene';
+
+// Styles
+import './styles/experience.css';
 
 export const App: React.FC = () => {
+  const [currentScene, setCurrentScene] = useState<SceneState>('OPENING');
+  const [userResponses, setUserResponses] = useState<UserResponses>({
+    initialLikeSg: null,
+    noClickCount: 0,
+    sgLikedTrait: null,
+    compliment: '',
+    surviveHackathon: null,
+    teamWorthIt: null
+  });
+
+  // Set initial scene on AudioManager
+  useEffect(() => {
+    audioManager.onSceneChanged('OPENING');
+  }, []);
+
+  // Unlock audio on any initial interaction anywhere on page
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      audioManager.unlock();
+      audioManager.onSceneChanged(currentScene);
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+
+    window.addEventListener('click', handleFirstInteraction, { passive: true });
+    window.addEventListener('touchstart', handleFirstInteraction, { passive: true });
+    window.addEventListener('keydown', handleFirstInteraction, { passive: true });
+
+    return () => {
+      window.removeEventListener('click', handleFirstInteraction);
+      window.removeEventListener('touchstart', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+  }, [currentScene]);
+
+  // Transition to next scene and trigger authoritative scene audio
+  const goToScene = useCallback((scene: SceneState) => {
+    setCurrentScene(scene);
+    audioManager.onSceneChanged(scene);
+  }, []);
+
+  // Determine atmospheric background glow based on active scene
+  const getAtmosphereClass = () => {
+    switch (currentScene) {
+      case 'SG_QUESTION':
+        return userResponses.noClickCount > 0 ? 'comedy-glow' : '';
+      case 'SG_YES_PATH':
+        return 'lounge-glow';
+      case 'MEMORY_MONTAGE':
+        return 'nostalgic';
+      case 'EMOTIONAL':
+      case 'ENDING':
+        return 'emotional-warmth';
+      default:
+        return '';
+    }
+  };
+
   return (
-    <BrowserRouter>
-      <DemoProvider>
-        <div className="jansetu-app">
-          <Header />
-          <ProgressIndicator />
-          <div className="jansetu-main">
-            <Routes>
-              <Route path="/" element={<WelcomePage />} />
-              <Route path="/need" element={<NeedInputPage />} />
-              <Route path="/schemes" element={<SchemesPage />} />
-              <Route path="/scheme-details" element={<SchemeDetailsPage />} />
-              <Route path="/eligibility" element={<EligibilityPage />} />
-              <Route path="/readiness" element={<ReadinessPage />} />
-              <Route path="/requirements" element={<RequirementsPage />} />
-              <Route path="/next-action" element={<NextActionPage />} />
-              <Route path="/official-application" element={<OfficialApplicationPage />} />
-              <Route path="/blocker" element={<BlockerPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </div>
-          <Footer />
-        </div>
-      </DemoProvider>
-    </BrowserRouter>
+    <div className="app-viewport">
+      {/* Atmosphere Background Aura */}
+      <div className={`scene-atmosphere ${getAtmosphereClass()}`} />
+
+      {/* Top Floating App Bar */}
+      <header className="top-header">
+        <span className="brand-badge">JANSETU</span>
+        <MusicControl />
+      </header>
+
+      {/* Scene State Machine Controller */}
+      {currentScene === 'OPENING' && (
+        <OpeningScene
+          onComplete={() => goToScene('SG_QUESTION')}
+        />
+      )}
+
+      {currentScene === 'SG_QUESTION' && (
+        <SGQuestionScene
+          onYesChosen={(wasInitialYes, noCount) => {
+            setUserResponses(prev => ({
+              ...prev,
+              initialLikeSg: wasInitialYes,
+              noClickCount: noCount
+            }));
+            goToScene('SG_YES_PATH');
+          }}
+        />
+      )}
+
+      {currentScene === 'SG_YES_PATH' && (
+        <SgYesPathScene
+          wasInitialYes={userResponses.initialLikeSg ?? true}
+          onComplete={(trait, compliment) => {
+            setUserResponses(prev => ({
+              ...prev,
+              sgLikedTrait: trait,
+              compliment
+            }));
+            goToScene('TEAM_QUESTIONS');
+          }}
+        />
+      )}
+
+      {currentScene === 'TEAM_QUESTIONS' && (
+        <TeamQuestionsScene
+          onComplete={(choice) => {
+            setUserResponses(prev => ({
+              ...prev,
+              surviveHackathon: choice
+            }));
+            goToScene('MEMORY_MONTAGE');
+          }}
+        />
+      )}
+
+      {currentScene === 'MEMORY_MONTAGE' && (
+        <MemoryMontageScene
+          onComplete={() => goToScene('EMOTIONAL')}
+        />
+      )}
+
+      {currentScene === 'EMOTIONAL' && (
+        <EmotionalMomentScene
+          onEmotionalPeak={() => goToScene('COMEDY_CUT')}
+        />
+      )}
+
+      {currentScene === 'COMEDY_CUT' && (
+        <ComedyCutScene
+          onProceed={() => goToScene('ENDING')}
+        />
+      )}
+
+      {currentScene === 'ENDING' && (
+        <EndingScene
+          userCompliment={userResponses.compliment}
+          onReplay={() => {
+            setUserResponses({
+              initialLikeSg: null,
+              noClickCount: 0,
+              sgLikedTrait: null,
+              compliment: '',
+              surviveHackathon: null,
+              teamWorthIt: null
+            });
+            goToScene('OPENING');
+          }}
+        />
+      )}
+
+      {/* Development Audio Debug Indicator */}
+      <AudioDebugPanel />
+    </div>
   );
 };
 
